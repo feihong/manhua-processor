@@ -1,11 +1,13 @@
 (* Convert SQLite database file to a bunch of .cbz files *)
 
+type image = { path : string } [@@deriving yojson]
+
 type input_episode = {
   id : int;
   path : string;
   title : string;
   short_title : string;
-  images : string list;
+  images : image list;
 }
 [@@deriving yojson]
 
@@ -46,7 +48,7 @@ let make_episode (comics_table : (int, comic) Hashtbl.t)
       let comic_id = Str.matched_group 1 path |> int_of_string in
       let episode_id = Str.matched_group 2 path |> int_of_string in
       let comic = Hashtbl.find comics_table comic_id in
-      let episode =
+      let episode : input_episode =
         comic.ep_list
         |> List.find (fun (ep : input_episode) -> ep.id = episode_id)
       in
@@ -61,7 +63,7 @@ let make_episode (comics_table : (int, comic) Hashtbl.t)
             |> List.filter_map (fun s ->
                    match String.trim s with "" -> None | s -> Some s)
             |> String.concat " ";
-          images = episode.images;
+          images = episode.images |> List.map (fun (im : image) -> im.path);
         }
 
 let make_episodes_table (db : Sqlite3.db)
@@ -84,6 +86,21 @@ let make_episodes_table (db : Sqlite3.db)
       | _ -> ())
   in
   table
+
+let get_episode_images db (episode : episode) =
+  let index = ref 0 in
+  episode.images
+  |> List.filter_map @@ fun path ->
+     incr index;
+     let sql =
+       Printf.sprintf "select data from dump where url like '%s' LIMIT 1" path
+     in
+     let statement = Sqlite3.prepare db sql in
+     match Sqlite3.step statement with
+     | OK -> Some (Sqlite3.column_blob statement 0)
+     | _ ->
+         Printf.printf "No data found for image %i of %s" !index episode.title;
+         None
 
 let () =
   print_endline "Inside incomplete cbz program";
