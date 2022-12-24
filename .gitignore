@@ -1,1 +1,5 @@
 _build
+
+session.har
+session.jsonl
+session.db

@@ -28,7 +28,18 @@ let line_to_request (line : string) =
   }
 
 let () =
-  print_endline "Inside incomplete db program";
   if Sys.file_exists db_file then Sys.remove db_file;
+  let db = Sqlite3.db_open db_file in
+  let _code = Sqlite3.exec db "CREATE TABLE dump (url text, data blob)" in
+  let statement = Sqlite3.prepare db "INSERT INTO dump VALUES (:url, :data)" in
   file_to_lines () |> Seq.map line_to_request
-  |> Seq.iter (fun request -> print_endline request.url)
+  |> Seq.iter (fun { url; data; _ } ->
+         print_endline url;
+         let _code =
+           Sqlite3.bind_names statement
+             [ (":url", TEXT url); (":data", BLOB data) ]
+         in
+         let _code = Sqlite3.step statement in
+         ());
+  let _success = Sqlite3.db_close db in
+  ()
