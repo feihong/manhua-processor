@@ -5,13 +5,14 @@ type input_episode = {
   path : string;
   title : string;
   short_title : string;
+  images : string list;
 }
 [@@deriving yojson]
 
 type comic = { id : int; title : string; ep_list : input_episode list }
 [@@deriving yojson]
 
-type episode = { id : int; title : string; link : string }
+type episode = { id : int; title : string; link : string; images : string list }
 
 let get_data (s : string) =
   match Yojson.Safe.from_string s with
@@ -23,16 +24,14 @@ let make_comics_table (db : Sqlite3.db) =
     Sqlite3.prepare db "select data from dump where url like '%ComicDetail%'"
   in
   let table = Hashtbl.create 10 in
-  let _code, () =
-    Sqlite3.fold statement
-      ~f:(fun () array ->
-        match array with
-        | [| BLOB data |] ->
-            data |> get_data |> Option.map comic_of_yojson
-            |> Option.iter (fun (comic : comic) ->
-                   Hashtbl.add table comic.id comic)
-        | _ -> ())
-      ~init:()
+  let add_from_string s =
+    s |> get_data |> Option.map comic_of_yojson
+    |> Option.iter (fun (comic : comic) -> Hashtbl.add table comic.id comic)
+  in
+  let _code =
+    Sqlite3.iter statement ~f:(function
+      | [| BLOB s |] -> add_from_string s
+      | _ -> ())
   in
   table
 
@@ -40,6 +39,7 @@ let make_episode (comics_table : (int, comic) Hashtbl.t)
     (input_episode : input_episode) =
   let re = Str.regexp {|/bfs/manga/\([0-9]+\)/\([0-9]+\)|} in
   let path = input_episode.path in
+  (* If path doesn't match, then it probably hasn't been bought *)
   match Str.string_match re path 0 with
   | false -> None
   | true ->
@@ -61,6 +61,7 @@ let make_episode (comics_table : (int, comic) Hashtbl.t)
             |> List.filter_map (fun s ->
                    match String.trim s with "" -> None | s -> Some s)
             |> String.concat " ";
+          images = episode.images;
         }
 
 let make_episodes_table (db : Sqlite3.db)
@@ -69,22 +70,18 @@ let make_episodes_table (db : Sqlite3.db)
   let statement =
     Sqlite3.prepare db "select data from dump where url like '%GetImageIndex%'"
   in
-  let string_to_episode s =
+  let add_from_string s =
     s |> get_data
     |> Option.map input_episode_of_yojson
     |> Option.map (make_episode comics_table)
     |> Option.join
+    |> Option.iter (fun (episode : episode) ->
+           Hashtbl.add table episode.id episode)
   in
-  let _code, () =
-    Sqlite3.fold statement
-      ~f:(fun () array ->
-        match array with
-        | [| BLOB s |] ->
-            s |> string_to_episode
-            |> Option.iter (fun (episode : episode) ->
-                   Hashtbl.add table episode.id episode)
-        | _ -> ())
-      ~init:()
+  let _code =
+    Sqlite3.iter statement ~f:(function
+      | [| BLOB s |] -> add_from_string s
+      | _ -> ())
   in
   table
 
