@@ -8,12 +8,13 @@ let jsonl_file = "session.jsonl"
 (* Return a Seq of lines from the jsonl file *)
 let file_to_lines () =
   let ic = open_in jsonl_file in
-  ic
-  |> Seq.unfold (fun ic ->
-         try Some (input_line ic, ic)
-         with End_of_file ->
-           close_in ic;
-           None)
+  Seq.unfold
+    (fun () ->
+      try Some (input_line ic, ())
+      with End_of_file ->
+        close_in ic;
+        None)
+    ()
 
 (* Parse each line into request record *)
 let line_to_request (line : string) =

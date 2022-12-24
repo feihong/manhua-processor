@@ -8,7 +8,9 @@
 (executable
  (name cbz)
  (modules cbz)
- (libraries shared sqlite3 camlzip))
+ (libraries shared yojson sqlite3 camlzip)
+ (preprocess
+  (pps ppx_yojson_conv)))
 
 (library
  (name shared)
