@@ -1,2 +1,5 @@
 (executable
- (name db))
+ (name db)
+ (libraries yojson base64 sqlite3)
+ (preprocess
+  (pps ppx_yojson_conv)))
