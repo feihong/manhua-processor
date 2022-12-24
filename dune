@@ -1,15 +1,15 @@
 (executable
  (name db)
  (modules db)
- (libraries lib yojson base64 sqlite3)
+ (libraries shared yojson base64 sqlite3)
  (preprocess
   (pps ppx_yojson_conv)))
 
 (executable
  (name cbz)
  (modules cbz)
- (libraries lib sqlite3 camlzip))
+ (libraries shared sqlite3 camlzip))
 
 (library
- (name lib)
+ (name shared)
  (modules shared))

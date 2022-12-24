@@ -1,7 +1,5 @@
 (* Convert .jsonl file to SQLite database file *)
 
-module Shared = Lib.Shared
-
 type request = { url : string; encoding : string; data : string }
 [@@deriving yojson]
 
