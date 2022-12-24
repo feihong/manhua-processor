@@ -1,10 +1,11 @@
 (* Convert .jsonl file to SQLite database file *)
 
-let jsonl_file = "session.jsonl"
-let db_file = "session.db"
+module Shared = Lib.Shared
 
 type request = { url : string; encoding : string; data : string }
 [@@deriving yojson]
+
+let jsonl_file = "session.jsonl"
 
 (* Return a Seq of lines from the jsonl file *)
 let file_to_lines () =
@@ -28,6 +29,7 @@ let line_to_request (line : string) =
   }
 
 let () =
+  let db_file = Shared.db_file in
   if Sys.file_exists db_file then Sys.remove db_file;
   let db = Sqlite3.db_open db_file in
   let _code = Sqlite3.exec db "CREATE TABLE dump (url text, data blob)" in
