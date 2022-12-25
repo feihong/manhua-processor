@@ -16,28 +16,26 @@ type comic = { id : int; title : string; ep_list : input_episode list }
 
 type episode = { id : int; title : string; link : string; images : string list }
 
-let get_data (s : string) =
-  match Yojson.Safe.from_string s with
-  | `Assoc lst -> List.assoc_opt "data" lst
-  | _ -> None
+let query_to_json_seq db query =
+  let statement = Sqlite3.prepare db query in
+  Seq.unfold
+    (fun () ->
+      match Sqlite3.step statement with
+      | OK -> (
+          match Sqlite3.column_blob statement 0 |> Yojson.Safe.from_string with
+          | `Assoc lst -> Some (List.assoc "data" lst, ())
+          | _ -> None)
+      | _ -> None)
+    ()
 
 let make_comics_table (db : Sqlite3.db) =
-  let statement =
-    Sqlite3.prepare db "select data from dump where url like '%ComicDetail%'"
-  in
-  let table = Hashtbl.create 10 in
-  let add_from_string s =
-    s |> get_data |> Option.map comic_of_yojson
-    |> Option.iter (fun (comic : comic) -> Hashtbl.add table comic.id comic)
-  in
-  let _code =
-    Sqlite3.iter statement ~f:(function
-      | [| BLOB s |] -> add_from_string s
-      | _ -> ())
-  in
-  table
+  query_to_json_seq db "select data from dump where url like '%ComicDetail%'"
+  |> Seq.map (fun json ->
+         let comic = comic_of_yojson json in
+         (comic.id, comic))
+  |> Hashtbl.of_seq
 
-let make_episode (comics_table : (int, comic) Hashtbl.t)
+let make_episode ~(comics_table : (int, comic) Hashtbl.t)
     (input_episode : input_episode) =
   let re = Str.regexp {|/bfs/manga/\([0-9]+\)/\([0-9]+\)|} in
   let path = input_episode.path in
@@ -68,29 +66,16 @@ let make_episode (comics_table : (int, comic) Hashtbl.t)
 
 let make_episodes_table (db : Sqlite3.db)
     (comics_table : (int, comic) Hashtbl.t) =
-  let table = Hashtbl.create 10 in
-  let statement =
-    Sqlite3.prepare db "select data from dump where url like '%GetImageIndex%'"
-  in
-  let add_from_string s =
-    s |> get_data
-    |> Option.map input_episode_of_yojson
-    |> Option.map (make_episode comics_table)
-    |> Option.join
-    |> Option.iter (fun (episode : episode) ->
-           Hashtbl.add table episode.id episode)
-  in
-  let _code =
-    Sqlite3.iter statement ~f:(function
-      | [| BLOB s |] -> add_from_string s
-      | _ -> ())
-  in
-  table
+  query_to_json_seq db "select data from dump where url like '%GetImageIndex%'"
+  |> Seq.filter_map (fun json ->
+         json |> input_episode_of_yojson |> make_episode ~comics_table
+         |> Option.map (fun episode -> (episode.id, episode)))
+  |> Hashtbl.of_seq
 
 let get_episode_images db (episode : episode) =
   let index = ref 0 in
-  episode.images
-  |> List.filter_map @@ fun path ->
+  episode.images |> List.to_seq
+  |> Seq.filter_map @@ fun path ->
      incr index;
      let sql =
        Printf.sprintf "select data from dump where url like '%s' LIMIT 1" path
@@ -102,11 +87,27 @@ let get_episode_images db (episode : episode) =
          Printf.printf "No data found for image %i of %s" !index episode.title;
          None
 
+let make_cbz_file db (episode : episode) =
+  let image_count = ref 0 in
+  let comment = Printf.sprintf "%s\n%s" episode.title episode.link in
+  let zf = Zip.open_out ~comment (episode.title ^ ".cbz") in
+  get_episode_images db episode
+  |> Seq.iter (fun image ->
+         incr image_count;
+         let filename = Printf.sprintf "%03i.jpg" !image_count in
+         Zip.add_entry image zf ~level:0 filename);
+  Zip.close_out zf;
+  let expected_count = List.length episode.images in
+  if !image_count <> expected_count then
+    Printf.printf "Found %i images for %s, but expected %i" !image_count
+      episode.title expected_count
+
 let () =
   print_endline "Inside incomplete cbz program";
   let db = Sqlite3.db_open Shared.db_file in
   let comics_table = make_comics_table db in
-  let episodes = make_episodes_table db comics_table |> Hashtbl.to_seq_values in
-  episodes |> Seq.iter (fun (ep : episode) -> print_endline ep.title);
+  make_episodes_table db comics_table
+  |> Hashtbl.to_seq_values
+  |> Seq.iter (make_cbz_file db);
   let _success = Sqlite3.db_close db in
   ()
