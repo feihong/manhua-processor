@@ -90,13 +90,18 @@ let get_episode_images db (episode : episode) =
 let make_cbz_file db (episode : episode) =
   let image_count = ref 0 in
   let comment = Printf.sprintf "%s\n%s" episode.title episode.link in
-  let zf = Zip.open_out ~comment (episode.title ^ ".cbz") in
+  let filename1 = episode.title ^ ".cbz" in
+  let zf = Zip.open_out ~comment filename1 in
   get_episode_images db episode
   |> Seq.iter (fun image ->
          incr image_count;
          let filename = Printf.sprintf "%03i.jpg" !image_count in
          Zip.add_entry image zf ~level:0 filename);
   Zip.close_out zf;
+
+  (* Rename file to say how images are inside it *)
+  Sys.rename filename1 (Printf.sprintf "%s (%i).cbz" episode.title !image_count);
+
   let expected_count = List.length episode.images in
   if !image_count <> expected_count then
     Printf.printf "Found %i images for %s, but expected %i" !image_count
@@ -105,8 +110,7 @@ let make_cbz_file db (episode : episode) =
 let () =
   print_endline "Inside incomplete cbz program";
   let db = Sqlite3.db_open Shared.db_file in
-  let comics_table = make_comics_table db in
-  make_episodes_table db comics_table
+  make_episodes_table db (make_comics_table db)
   |> Hashtbl.to_seq_values
   |> Seq.iter (make_cbz_file db);
   let _success = Sqlite3.db_close db in
