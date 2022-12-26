@@ -1,7 +1,7 @@
 (* Convert .jsonl file to SQLite database file *)
 
-type request = { url : string; encoding : string; data : string }
-[@@deriving yojson]
+type request = { url : string; encoding : string option; data : string }
+[@@deriving yojson] [@@yojson.allow_extra_fields]
 
 let jsonl_file = "session.jsonl"
 
@@ -23,7 +23,7 @@ let line_to_request (line : string) =
   {
     request with
     data =
-      (if request.encoding = "base64" then Base64.decode_exn request.data
+      (if request.encoding = Some "base64" then Base64.decode_exn request.data
       else request.data);
   }
 
@@ -32,15 +32,18 @@ let () =
   if Sys.file_exists db_file then Sys.remove db_file;
   let db = Sqlite3.db_open db_file in
   let _code = Sqlite3.exec db "CREATE TABLE dump (url text, data blob)" in
-  let statement = Sqlite3.prepare db "INSERT INTO dump VALUES (:url, :data)" in
   file_to_lines () |> Seq.map line_to_request
   |> Seq.iter (fun { url; data; _ } ->
-         print_endline url;
+         (* print_endline url; *)
+         let statement =
+           Sqlite3.prepare db "INSERT INTO dump VALUES (:url, :data)"
+         in
          let _code =
            Sqlite3.bind_names statement
              [ (":url", TEXT url); (":data", BLOB data) ]
          in
          let _code = Sqlite3.step statement in
+         let _code = Sqlite3.finalize statement in
          ());
   let _success = Sqlite3.db_close db in
   ()

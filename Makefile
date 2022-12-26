@@ -4,6 +4,8 @@ build:
 start:
 	dune exec ./main.exe
 
+process: jsonl db cbz
+
 jsonl:
 	jq --compact-output '.log.entries[] | {url: .request.url, encoding: .response.content.encoding, data: .response.content.text}' session.har > session.jsonl
 
