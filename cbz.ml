@@ -9,6 +9,7 @@ type comic = { id : int; title : string; ep_list : episode list }
 
 type image = { path : string } [@@deriving yojson] [@@yojson.allow_extra_fields]
 
+(* Contains all image paths for a given episode *)
 type imageIndex = { path : string; images : image list }
 [@@deriving yojson] [@@yojson.allow_extra_fields]
 
@@ -39,7 +40,6 @@ let make_comics_table (db : Sqlite3.db) =
   query_to_json_seq db "select data from dump where url like '%ComicDetail%'"
   |> Seq.map (fun json ->
          let comic = comic_of_yojson json in
-         printf "Comic: %s\n" comic.title;
          (comic.id, comic))
   |> Hashtbl.of_seq
 
@@ -75,7 +75,6 @@ let make_imageIndex_table (db : Sqlite3.db) =
   query_to_json_seq db "select data from dump where url like '%GetImageIndex%'"
   |> Seq.map (fun json ->
          let imageIndex = imageIndex_of_yojson json in
-         print_endline ("Image index: " ^ imageIndex.path);
          (imageIndex.path, imageIndex))
   |> Hashtbl.of_seq
 
@@ -124,7 +123,13 @@ let make_cbz_file db (cbz : cbz) =
 let () =
   let db = Sqlite3.db_open Shared.db_file in
   let comics_table = make_comics_table db in
+  comics_table
+  |> Hashtbl.iter (fun _k (comic : comic) ->
+         printf "Found comic: %s\n" comic.title);
   let imageIndexes = make_imageIndex_table db |> Hashtbl.to_seq_values in
+  imageIndexes
+  |> Seq.iter (fun imageIndex ->
+         printf "Found image index: %s\n" imageIndex.path);
   let cbzs = imageIndexes |> Seq.filter_map (make_cbz ~comics_table) in
   cbzs |> Seq.iter (make_cbz_file db);
   let _success = Sqlite3.db_close db in
