@@ -1,5 +1,9 @@
+.DS_Store
 _build
 
 session.har
 session.jsonl
 session.db
+
+temp.json
+*.cbz

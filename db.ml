@@ -1,7 +1,7 @@
 (* Convert .jsonl file to SQLite database file *)
 
 type request = { url : string; encoding : string option; data : string }
-[@@deriving yojson] [@@yojson.allow_extra_fields]
+[@@deriving yojson]
 
 let jsonl_file = "session.jsonl"
 
@@ -42,8 +42,10 @@ let () =
            Sqlite3.bind_names statement
              [ (":url", TEXT url); (":data", BLOB data) ]
          in
-         let _code = Sqlite3.step statement in
-         let _code = Sqlite3.finalize statement in
-         ());
+         match Sqlite3.step statement with
+         | DONE -> ()
+         | code ->
+             Printf.printf "Failed to insert row, code: %s"
+               (Sqlite3.Rc.to_string code));
   let _success = Sqlite3.db_close db in
   ()
